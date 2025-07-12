@@ -7,14 +7,14 @@ from PyQt6.QtWidgets import (
     QGridLayout, QFrame, QHBoxLayout, QColorDialog, QTabWidget, QLineEdit
 )
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QPixmap, QIcon, QColor
-from PyQt6.QtCore import Qt, QUrl, QSize
-
+from PyQt6.QtCore import Qt, QUrl, QSize, QTime # Import QTime for formatting
 
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices
 
 
+# --- CONFIGURATION ---
 APP_NAME = "Cyteboard"
-
+# Determine the appropriate data directory based on the OS
 if sys.platform.startswith('win'):
     DATA_DIR = os.path.join(os.getenv('APPDATA'), APP_NAME)
 elif sys.platform.startswith('darwin'):
@@ -29,6 +29,7 @@ MAX_ROWS = MAX_SOUNDS // BUTTONS_PER_ROW
 MIN_ROWS = 1
 DEFAULT_ROWS = 4
 
+# --- THEMES ---
 THEMES = {
     "Cyber Green": {
         "bg_color": "#0d0d0d",
@@ -484,6 +485,7 @@ THEMES = {
 
 
 class SoundButton(QPushButton):
+    """ A custom button that can play a sound, with drag/drop and context menu. """
     def __init__(self, label, index, parent):
         super().__init__(label)
         self.index = index
@@ -494,26 +496,31 @@ class SoundButton(QPushButton):
         self.clicked.connect(self.handle_click)
         self.setProperty("broken", False)
         self.icon_path = ""
-        self.update_icon()
+        self.update_icon() # Initialize with a potential icon
 
+        # Ensure text is visible even with an icon
         self.setText(label)
-        self.setIconSize(QSize(32, 32))
+        self.setIconSize(QSize(32, 32)) # Smaller default icon size
 
     def update_style(self):
+        """ Forces a re-evaluation of the stylesheet for this widget. """
         self.style().unpolish(self)
         self.style().polish(self)
-        self.update_icon()
+        self.update_icon() # Also update icon when style updates
 
     def update_icon(self):
+        """ Sets or clears the button's icon based on self.icon_path. """
         if self.icon_path and os.path.exists(self.icon_path):
             pixmap = QPixmap(self.icon_path)
+            # Scale pixmap to fit a reasonable size for the button
             scaled_pixmap = pixmap.scaled(self.iconSize(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             self.setIcon(QIcon(scaled_pixmap))
-            self.setText(self.text())
+            self.setText(self.text()) # Ensure text is still set
         else:
-            self.setIcon(QIcon())
+            self.setIcon(QIcon()) # Clear the icon
 
     def handle_click(self):
+        """ Plays the sound, opens a file dialog, or prompts to relocate a missing file. """
         is_broken = self.property("broken")
         
         if self.text().startswith("Empty") or is_broken:
@@ -529,27 +536,30 @@ class SoundButton(QPushButton):
                 self.update_style()
 
     def load_new_sound(self):
+        """ Opens a file dialog to select a new audio file. """
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Audio File", "", "Audio Files (*.mp3 *.wav *.ogg)")
         if file_path:
             self.assign_file(file_path)
 
     def assign_file(self, file_path, icon_path=""):
+        """ Assigns a new audio file to this button and updates its state. """
         filename = os.path.basename(file_path)
         nickname = os.path.splitext(filename)[0]
         self.setText(nickname)
-        self.icon_path = icon_path
+        self.icon_path = icon_path # Store icon path
         self.parent.audio_files[str(self.index)] = {
             "path": file_path,
             "nickname": nickname,
-            "icon": icon_path
+            "icon": icon_path # Save icon path in data
         }
         self.setProperty("broken", False)
         self.setToolTip(f"Path: {file_path}")
         self.update_style()
 
     def show_context_menu(self, pos):
+        """ Shows a right-click context menu for the button. """
         if self.text().startswith("Empty") and not self.property("broken"):
-            return
+            return # No menu for truly empty slots
 
         menu = QMenu(self)
         
@@ -580,14 +590,16 @@ class SoundButton(QPushButton):
         menu.exec(self.mapToGlobal(pos))
 
     def remove_file(self):
+        """ Removes the sound and image from the button and data. """
         self.setText(f"Empty {self.index + 1}")
-        self.icon_path = ""
+        self.icon_path = "" # Clear icon path
         self.parent.audio_files.pop(str(self.index), None)
         self.setProperty("broken", False)
         self.setToolTip("")
         self.update_style()
 
     def change_nickname(self):
+        """ Opens a dialog to change the button's display text (nickname). """
         current_nickname = self.parent.audio_files.get(str(self.index), {}).get("nickname", "")
         text, ok = QInputDialog.getText(self, "Set Nickname", "Enter nickname:", text=current_nickname)
         if ok and text:
@@ -596,6 +608,7 @@ class SoundButton(QPushButton):
                 self.parent.audio_files[str(self.index)]["nickname"] = text
 
     def set_image(self):
+        """ Opens a file dialog to select an image for the button. """
         image_path, _ = QFileDialog.getOpenFileName(self, "Select Image", "", "Image Files (*.png *.jpg *.jpeg *.gif *.bmp)")
         if image_path:
             self.icon_path = image_path
@@ -604,6 +617,7 @@ class SoundButton(QPushButton):
             self.update_icon()
 
     def clear_image(self):
+        """ Clears the image associated with the button. """
         self.icon_path = ""
         if str(self.index) in self.parent.audio_files:
             self.parent.audio_files[str(self.index)]["icon"] = ""
@@ -627,6 +641,7 @@ class SoundButton(QPushButton):
                 break
 
 class ThemeFactory(QWidget):
+    """ A widget for creating and customizing themes. """
     def __init__(self, parent_app):
         super().__init__()
         self.parent_app = parent_app
@@ -635,6 +650,7 @@ class ThemeFactory(QWidget):
         self.update_color_buttons()
 
     def _get_default_custom_theme(self):
+        # A default set of colors for the custom theme
         return {
             "bg_color": "#202020",
             "text_color": "#00ff7f",
@@ -694,8 +710,9 @@ class ThemeFactory(QWidget):
 
         self.color_buttons = {}
         for i, (label_text, key) in enumerate(color_options):
+            # Corrected logic for row and column
             row = i // 2
-            col = (i % 2) * 2
+            col = (i % 2) * 2 # For label
             
             label = QLabel(label_text)
             label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -704,14 +721,15 @@ class ThemeFactory(QWidget):
             color_button = QPushButton("")
             color_button.setFixedSize(QSize(30, 25))
             color_button.clicked.connect(lambda checked, k=key: self.pick_color(k))
-            layout.addWidget(color_button, row, col + 1)
+            layout.addWidget(color_button, row, col + 1) # For button
             self.color_buttons[key] = color_button
         
+        # Adjust row calculation for the buttons below
         num_color_options_rows = (len(color_options) + 1) // 2 
         
         apply_button = QPushButton("Apply Custom Theme")
         apply_button.clicked.connect(self.apply_custom_theme)
-        layout.addWidget(apply_button, num_color_options_rows, 0, 1, 2)
+        layout.addWidget(apply_button, num_color_options_rows, 0, 1, 2) # Span across two columns
 
         save_button = QPushButton("Save Custom Theme")
         save_button.clicked.connect(self.save_custom_theme)
@@ -727,7 +745,7 @@ class ThemeFactory(QWidget):
         if color.isValid():
             self.current_custom_theme[key] = color.name()
             self.update_color_buttons()
-            self.apply_custom_theme()
+            self.apply_custom_theme() # Apply immediately for preview
 
     def update_color_buttons(self):
         for key, button in self.color_buttons.items():
@@ -742,7 +760,7 @@ class ThemeFactory(QWidget):
     def save_custom_theme(self):
         self.parent_app.custom_theme = self.current_custom_theme.copy()
         QMessageBox.information(self, "Theme Saved", "Custom theme settings saved!")
-        
+        # The theme will be saved automatically when the app closes via closeEvent
 
     def reset_custom_theme(self):
         self.current_custom_theme = self._get_default_custom_theme()
@@ -752,18 +770,21 @@ class ThemeFactory(QWidget):
 
 
 class Cyteboard(QMainWindow):
+    """ The main application window with dynamic button grid. """
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         self.setGeometry(100, 100, 800, 600)
 
+        # Ensure the data directory exists
         os.makedirs(DATA_DIR, exist_ok=True)
 
         self.audio_files = {}
         self.buttons = []
         self.num_rows = DEFAULT_ROWS
-        self.current_theme_name = "Cyber Green"
-        self.custom_theme = None
+        self.current_theme_name = "Cyber Green" # Default theme
+        self.custom_theme = None # To store the user's custom theme
+        self.is_streaming_active = False # New state for the stream button
 
         self.player_output = QMediaPlayer(self)
         self.audio_output_device = QAudioOutput()
@@ -772,18 +793,32 @@ class Cyteboard(QMainWindow):
         self.audio_virtual_device = QAudioOutput()
         self.player_virtual.setAudioOutput(self.audio_virtual_device)
 
+        # Initialize timeline slider and labels
+        self.position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.current_time_label = QLabel("00:00")
+        self.total_time_label = QLabel("00:00")
+
+        # Connect player signals to timeline
+        self.player_output.durationChanged.connect(self.duration_changed)
+        self.player_output.positionChanged.connect(self.position_changed)
+        # Use sliderReleased to prevent constant updates while dragging
+        self.position_slider.sliderReleased.connect(self.set_position_from_slider)
+
+
         self.load_data()
         self.init_ui()
-        self.apply_theme(self.current_theme_name)
+        self.apply_theme(self.current_theme_name) # Apply initial theme
         self.rebuild_button_grid()
         
         self.audio_output_device.setVolume(self.volume_slider.value() / 100.0)
         self.audio_virtual_device.setVolume(self.volume_slider.value() / 100.0)
 
     def init_ui(self):
+        """ Initializes the main window layout and control panel. """
         self.tab_widget = QTabWidget()
         self.setCentralWidget(self.tab_widget)
 
+        # Main Soundboard Tab
         self.main_soundboard_widget = QWidget()
         main_layout = QVBoxLayout(self.main_soundboard_widget)
         main_layout.setSpacing(20)
@@ -802,11 +837,13 @@ class Cyteboard(QMainWindow):
         separator.setObjectName("SeparatorFrame")
         main_layout.addWidget(separator)
         
+        # --- Controls Section ---
         controls_widget = QWidget()
         controls_layout = QGridLayout(controls_widget)
         controls_layout.setSpacing(10)
         controls_layout.setColumnStretch(1, 1)
 
+        # Volume control
         self.volume_label = QLabel("MASTER VOLUME")
         controls_layout.addWidget(self.volume_label, 0, 0, Qt.AlignmentFlag.AlignRight)
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
@@ -815,45 +852,115 @@ class Cyteboard(QMainWindow):
         self.volume_slider.valueChanged.connect(self.set_volume)
         controls_layout.addWidget(self.volume_slider, 0, 1)
 
+        # Output device selection
         self.output_label = QLabel("OUTPUT DEVICE")
         controls_layout.addWidget(self.output_label, 1, 0, Qt.AlignmentFlag.AlignRight)
         self.output_combo = QComboBox()
         controls_layout.addWidget(self.output_combo, 1, 1)
 
+        # Virtual input device selection
         self.virtual_label = QLabel("VIRTUAL INPUT")
         controls_layout.addWidget(self.virtual_label, 2, 0, Qt.AlignmentFlag.AlignRight)
         self.virtual_combo = QComboBox()
         controls_layout.addWidget(self.virtual_combo, 2, 1)
 
-        self.theme_label = QLabel("THEME")
-        controls_layout.addWidget(self.theme_label, 3, 0, Qt.AlignmentFlag.AlignRight)
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(list(THEMES.keys()) + ["Custom"])
-        self.theme_combo.setCurrentText(self.current_theme_name)
-        self.theme_combo.currentIndexChanged.connect(self.handle_theme_selection)
-        controls_layout.addWidget(self.theme_combo, 3, 1)
+        # Timeline Slider and Labels
+        controls_layout.addWidget(QLabel("TIMELINE"), 3, 0, Qt.AlignmentFlag.AlignRight)
+        timeline_layout = QHBoxLayout()
+        timeline_layout.addWidget(self.current_time_label)
+        timeline_layout.addWidget(self.position_slider)
+        timeline_layout.addWidget(self.total_time_label)
+        controls_layout.addLayout(timeline_layout, 3, 1)
 
+        # Theme selection
+        self.theme_label = QLabel("THEME")
+        controls_layout.addWidget(self.theme_label, 4, 0, Qt.AlignmentFlag.AlignRight) # Adjusted row index
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(list(THEMES.keys()) + ["Custom"]) # Add "Custom" to the list
+        self.theme_combo.setCurrentText(self.current_theme_name) # Set initial selection
+        self.theme_combo.currentIndexChanged.connect(self.handle_theme_selection)
+        controls_layout.addWidget(self.theme_combo, 4, 1) # Adjusted row index
+
+        # Add the Stream button
+        self.stream_button = QPushButton("Stream")
+        self.stream_button.setObjectName("StreamButton") # Set object name for specific styling
+        self.stream_button.clicked.connect(self.toggle_stream_state) # Connect to the new toggle function
+        controls_layout.addWidget(self.stream_button, 5, 0, 1, 2) # Adjusted row index, span across two columns
+        
         main_layout.addWidget(controls_widget)
         self.tab_widget.addTab(self.main_soundboard_widget, "Soundboard")
 
+        # Theme Factory Tab
         self.theme_factory_widget = ThemeFactory(self)
         self.tab_widget.addTab(self.theme_factory_widget, "Theme Factory")
 
         self.populate_device_lists()
         self.setAcceptDrops(True)
+        self.update_stream_button_style() # Initialize stream button style
+
+    def toggle_stream_state(self):
+        """ Toggles the streaming active state and updates the button's appearance. """
+        if not self.is_streaming_active:
+            # If not active, show the warning and ask to proceed
+            msg_box = QMessageBox()
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.setText("PC Audio to Mic Functionality")
+            msg_box.setInformativeText(
+                "This feature allows you to route your PC's audio directly to your microphone input, "
+                "making it audible to others in calls or streams.\n\n"
+                "**How it works (requires external software):**\n"
+                "1.  **Install a Virtual Audio Cable:** (e.g., VB-Cable for Windows, BlackHole for macOS, JACK for Linux).\n"
+                "2.  **Set Cyteboard's 'Virtual Input'**: Select the virtual cable's input as the 'Virtual Input' device in Cyteboard's controls.\n"
+                "3.  **Set Your Communication App's Mic**: In your communication software (Discord, Zoom, OBS), select the virtual cable's *output* as your microphone.\n\n"
+                "**Proceeding will not directly activate this feature within Cyteboard, but confirms you understand the setup.**"
+            )
+            msg_box.setWindowTitle("Stream Functionality Information")
+            
+            proceed_button = msg_box.addButton("Proceed (I Understand)", QMessageBox.ButtonRole.AcceptRole)
+            cancel_button = msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+            
+            msg_box.exec()
+
+            if msg_box.clickedButton() == proceed_button:
+                self.is_streaming_active = True
+                self.update_stream_button_style()
+                print("User acknowledges streaming setup. Cyteboard's 'streaming mode' is now active.")
+            else:
+                print("Streaming information dialog cancelled. Cyteboard's 'streaming mode' remains inactive.")
+        else:
+            # If already active, turn it off
+            self.is_streaming_active = False
+            self.update_stream_button_style()
+            print("Cyteboard's 'streaming mode' is now inactive.")
+
+    def update_stream_button_style(self):
+        """ Updates the Stream button's text and style based on its active state. """
+        if self.is_streaming_active:
+            self.stream_button.setText("Streaming...")
+            self.stream_button.setProperty("active", True) # Set a dynamic property for styling
+        else:
+            self.stream_button.setText("Stream")
+            self.stream_button.setProperty("active", False) # Set property to false
+        self.stream_button.style().unpolish(self.stream_button) # Force style re-evaluation
+        self.stream_button.style().polish(self.stream_button)
+
 
     def handle_theme_selection(self, index):
         theme_name = self.theme_combo.currentText()
         if theme_name == "Custom":
             self.apply_theme("Custom")
-            self.tab_widget.setCurrentWidget(self.theme_factory_widget)
+            self.tab_widget.setCurrentWidget(self.theme_factory_widget) # Switch to theme factory
         else:
             self.apply_theme(theme_name)
-            if self.custom_theme:
-                 self.theme_factory_widget.current_custom_theme = theme.copy()
-                 self.theme_factory_widget.update_color_buttons()
+            # If switching from Custom to a predefined theme, update Theme Factory's internal state
+            # This is crucial so that when the user switches back to 'Custom' tab, it reflects the *current* active theme
+            theme = THEMES.get(theme_name, THEMES["Cyber Green"])
+            self.theme_factory_widget.current_custom_theme = theme.copy()
+            self.theme_factory_widget.update_color_buttons()
+
 
     def rebuild_button_grid(self):
+        """ Clears and rebuilds the grid of sound buttons based on self.num_rows. """
         for button in self.buttons:
             self.button_layout.removeWidget(button)
             button.deleteLater()
@@ -868,7 +975,7 @@ class Cyteboard(QMainWindow):
                 data = self.audio_files[str(i)]
                 btn.setText(data["nickname"])
                 btn.setToolTip(f"Path: {data['path']}")
-                btn.icon_path = data.get("icon", "")
+                btn.icon_path = data.get("icon", "") # Load icon path
                 
                 if not os.path.exists(data["path"]):
                     btn.setProperty("broken", True)
@@ -878,11 +985,12 @@ class Cyteboard(QMainWindow):
             self.buttons.append(btn)
         
         for btn in self.buttons:
-            btn.update_style()
+            btn.update_style() # This also calls update_icon() for each button
 
         self.updateGeometry()
 
     def show_background_context_menu(self, pos):
+        """ Shows a context menu to add or remove rows of buttons. """
         menu = QMenu(self)
         add_row_action = QAction("Add Row", self)
         add_row_action.triggered.connect(self.add_row)
@@ -905,6 +1013,7 @@ class Cyteboard(QMainWindow):
 
     def remove_row(self):
         if self.num_rows > MIN_ROWS:
+            # Check if there are active buttons in the last row
             last_row_start_index = (self.num_rows - 1) * BUTTONS_PER_ROW
             has_active_buttons = False
             for i in range(BUTTONS_PER_ROW):
@@ -921,6 +1030,7 @@ class Cyteboard(QMainWindow):
                 if reply == QMessageBox.StandardButton.No:
                     return
 
+                # If confirmed, remove data for buttons in the last row
                 for i in range(BUTTONS_PER_ROW):
                     btn_index = last_row_start_index + i
                     self.audio_files.pop(str(btn_index), None)
@@ -935,6 +1045,7 @@ class Cyteboard(QMainWindow):
 
         all_audio_outputs = QMediaDevices.audioOutputs()
 
+        # Filter out virtual devices for the main output
         self.output_devices = [
             d for d in all_audio_outputs
             if "virtual" not in d.description().lower() and "cable" not in d.description().lower()
@@ -947,9 +1058,11 @@ class Cyteboard(QMainWindow):
             for device in self.output_devices:
                 self.output_combo.addItem(device.description())
             self.output_combo.currentIndexChanged.connect(self.change_output_device)
+            # Set the default output device
             self.audio_output_device.setDevice(self.output_devices[self.output_combo.currentIndex()])
 
 
+        # Identify virtual devices for the virtual input
         self.virtual_devices = [
             d for d in all_audio_outputs
             if "virtual" in d.description().lower() or "cable" in d.description().lower()
@@ -971,8 +1084,11 @@ class Cyteboard(QMainWindow):
         if theme_name == "Custom" and self.custom_theme:
             theme = self.custom_theme
         else:
-            theme = THEMES.get(theme_name, THEMES["Cyber Green"])
+            theme = THEMES.get(theme_name, THEMES["Cyber Green"]) # Fallback to default
+            # If a predefined theme is selected, ensure the custom theme is not accidentally loaded
             if theme_name != "Custom" and self.custom_theme:
+                 # Update the theme factory's current theme to match the newly applied one
+                 # This is crucial so that when the user switches to 'Custom' tab, it reflects the *current* active theme
                  self.theme_factory_widget.current_custom_theme = theme.copy()
                  self.theme_factory_widget.update_color_buttons()
 
@@ -1041,8 +1157,9 @@ class Cyteboard(QMainWindow):
             QLineEdit {{ background-color: {theme["input_bg"]}; border: 1px solid {theme["input_border"]}; border-radius: 5px; color: {theme["text_color"]}; padding: 5px; font-size: 14px; }}
             QLineEdit:focus {{ border: 1px solid {theme["button_hover_bg"]}; }}
             QPushButton {{
-                border-image: url(none);
-                qproperty-iconSize: 32px 32px;
+                /* Apply border-radius to the icon as well, if supported, otherwise it's just the button */
+                border-image: url(none); /* Prevents default image styling interfering */
+                qproperty-iconSize: 32px 32px; /* Set desired icon size to be smaller */
             }}
             QPushButton::hover {{
                 border-image: url(none);
@@ -1050,17 +1167,17 @@ class Cyteboard(QMainWindow):
             QPushButton::pressed {{
                 border-image: url(none);
             }}
-            QTabWidget::pane {{
+            QTabWidget::pane {{ /* The tab widget frame */
                 border: 1px solid {theme["separator_border"]};
                 background-color: {theme["bg_color"]};
             }}
             QTabWidget::tab-bar {{
-                left: 5px;
+                left: 5px; /* move to the right */
             }}
             QTabBar::tab {{
                 background: {theme["combo_bg"]};
                 border: 1px solid {theme["combo_border"]};
-                border-bottom-color: {theme["combo_border"]};
+                border-bottom-color: {theme["combo_border"]}; /* same as pane color */
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 min-width: 8ex;
@@ -1074,12 +1191,41 @@ class Cyteboard(QMainWindow):
             }}
             QTabBar::tab:selected {{
                 border-color: {theme["button_hover_bg"]};
-                border-bottom-color: {theme["bg_color"]};
+                border-bottom-color: {theme["bg_color"]}; /* make selected tab appear connected to the pane */
+            }}
+            #StreamButton {{ /* Default style for the Stream button (inactive) */
+                background-color: #dc3545; /* Red color */
+                border: 1px solid #dc3545;
+                color: white;
+            }}
+            #StreamButton:hover {{
+                background-color: #c82333; /* Darker red on hover */
+                border: 1px solid #c82333;
+            }}
+            #StreamButton:pressed {{
+                background-color: #bd2130; /* Even darker red when pressed */
+                border: 1px solid #bd2130;
+            }}
+            #StreamButton[active="true"] {{ /* Style when streaming is active */
+                background-color: #28a745; /* Green color */
+                border: 1px solid #28a745;
+                color: white;
+            }}
+            #StreamButton[active="true"]:hover {{
+                background-color: #218838; /* Darker green on hover */
+                border: 1px solid #218838;
+            }}
+            #StreamButton[active="true"]:pressed {{
+                background-color: #1e7e34; /* Even darker green when pressed */
+                border: 1px solid #1e7e34;
             }}
         """
         self.setStyleSheet(style)
+        # Force re-style on all buttons to ensure icon border-radius property is re-evaluated
         for button in self.buttons:
             button.update_style()
+        # Also update the stream button's style specifically
+        self.update_stream_button_style()
         
     def set_volume(self, value):
         vol = value / 100.0
@@ -1104,7 +1250,34 @@ class Cyteboard(QMainWindow):
         self.player_output.play()
         self.player_virtual.play()
 
+    def duration_changed(self, duration):
+        # Duration is in milliseconds
+        self.position_slider.setRange(0, duration)
+        self.total_time_label.setText(self.format_time(duration))
+
+    def position_changed(self, position):
+        # Position is in milliseconds
+        # Only update slider value if the user is not currently dragging it
+        if not self.position_slider.isSliderDown():
+            self.position_slider.setValue(position)
+        self.current_time_label.setText(self.format_time(position))
+
+    def set_position_from_slider(self):
+        # Set position in milliseconds from the slider's current value
+        position = self.position_slider.value()
+        self.player_output.setPosition(position)
+        self.player_virtual.setPosition(position)
+
+    def format_time(self, ms):
+        # Helper function to format milliseconds into MM:SS
+        seconds = ms // 1000
+        minutes = seconds // 60
+        seconds %= 60
+        return f"{minutes:02}:{seconds:02}"
+
+
     def load_data(self):
+        """ Loads sound data and UI state from the JSON file. """
         if os.path.exists(DATA_FILE):
             try:
                 with open(DATA_FILE, "r") as f:
@@ -1113,6 +1286,8 @@ class Cyteboard(QMainWindow):
                     self.num_rows = data.get("ui_state", {}).get("num_rows", DEFAULT_ROWS)
                     self.current_theme_name = data.get("ui_state", {}).get("theme", "Cyber Green")
                     self.custom_theme = data.get("ui_state", {}).get("custom_theme", None)
+                    # Load the streaming state
+                    self.is_streaming_active = data.get("ui_state", {}).get("is_streaming_active", False)
                     
                     self.num_rows = max(MIN_ROWS, min(self.num_rows, MAX_ROWS))
 
@@ -1122,19 +1297,23 @@ class Cyteboard(QMainWindow):
                 self.num_rows = DEFAULT_ROWS
                 self.current_theme_name = "Cyber Green"
                 self.custom_theme = None
+                self.is_streaming_active = False # Reset on error
         else:
             self.audio_files = {}
             self.num_rows = DEFAULT_ROWS
             self.current_theme_name = "Cyber Green"
             self.custom_theme = None
+            self.is_streaming_active = False
 
     def closeEvent(self, event):
+        """ Saves all data to the JSON file when the application closes. """
         data_to_save = {
             "audio_files": self.audio_files,
             "ui_state": {
                 "num_rows": self.num_rows,
                 "theme": self.current_theme_name,
-                "custom_theme": self.custom_theme
+                "custom_theme": self.custom_theme, # Save custom theme data
+                "is_streaming_active": self.is_streaming_active # Save streaming state
             }
         }
         with open(DATA_FILE, "w") as f:
